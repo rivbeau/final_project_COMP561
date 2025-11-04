@@ -82,7 +82,6 @@ def main():
     #     seq = get_dna_seq(site)
     #     print(seq)
     #     print(get_score(seq, tf_df.iloc[0]))
-        
 if __name__ == "__main__":
     main()
     

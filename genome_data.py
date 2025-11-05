@@ -1,4 +1,4 @@
-import glob, os, pandas as pd
+import glob, os, pandas as pd, numpy as np
 
 chromosomes = {}
 tf_pwm = "./factorbookMotifPwm.txt"
@@ -26,10 +26,14 @@ def load_tf_df():
             if len(base_groups) != 4 :
                 raise ValueError(f"Expected 4 base groups, got {len(base_groups)}")
             
-            A = [float(x) for x in base_groups[0].split(",") if x]
-            C = [float(x) for x in base_groups[1].split(",") if x]
-            G = [float(x) for x in base_groups[2].split(",") if x]
-            T = [float(x) for x in base_groups[3].split(",") if x]
+            # Convert probabilities to log-odds scores for easier handling, and not additional recomputing later
+            A = [np.log(float(x)) if float(x) > 0 else -np.inf for x in base_groups[0].split(",") if x]
+            C = [np.log(float(x)) if float(x) > 0 else -np.inf for x in base_groups[1].split(",") if x]
+            G = [np.log(float(x)) if float(x) > 0 else -np.inf for x in base_groups[2].split(",") if x]
+            T = [np.log(float(x)) if float(x) > 0 else -np.inf for x in base_groups[3].split(",") if x]
+            
+            
+            
             
             pwm_rows.append({
                 'tf_name': tf_name,

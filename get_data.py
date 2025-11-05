@@ -1,9 +1,9 @@
 import pandas as pd
 import numpy as np 
-import genome_data
+import genome_data # importing genome data, such as chromosomes and tf_df = [tf_name, tf_length, A, C, G, T] with log_pwm values for each base
+from concurrent.futures import ProcessPoolExecutor, as_completed
 
 genomic_sites = "./wgEncodeRegTfbsClusteredV3.GM12878.merged.bed"
-
 pos_tf_bind = "./factorbookMotifPos.txt"
 
 
@@ -23,6 +23,7 @@ def get_all_dna_seq(genomic_sites, chroms = genome_data.chromosomes):
     df['id'] = df['chrom'].astype(str) + ':' + df['start'].astype(str) + '-' + df['end'].astype(str)
     return df[['id', 'seq']]
 
+    
 def get_score(seq, row_tf):
     A_list = row_tf['A']
     C_list = row_tf['C']
@@ -31,49 +32,64 @@ def get_score(seq, row_tf):
     tf_length = row_tf['tf_length']
     
     if len(seq) < tf_length:
-        return -np.inf
+        return -np.inf, None
     
     max_score = -np.inf
-    # max_index = None
+    max_index = None
     #need to check all positions 0 - len(seq) - tf_length
     for i in range(len(seq) - tf_length + 1):
         score = 0
         window = seq[i:i+tf_length]
-        with np.errstate(divide='raise'): #so it raises an error for log 0 which try will catch
-            for j in range(len(window)):
-                try:
-                    if window[j] == 'A':
-                        score += np.log(A_list[j])
-                    elif window[j] == 'C':
-                        score += np.log(C_list[j])
-                    elif window[j] == 'G':
-                        score += np.log(G_list[j])
-                    elif window[j] == 'T':
-                        score += np.log(T_list[j])
-                except (FloatingPointError):
-                    score = -np.inf
-                    break  # No need to continue if we hit a log(0)
+        for j in range(len(window)):
+            if window[j] == 'A':
+                score += A_list[j]
+            elif window[j] == 'C':
+                score += C_list[j]
+            elif window[j] == 'G':
+                score += G_list[j]
+            elif window[j] == 'T':
+                score += T_list[j]
+            else :
+                score = -np.inf
+            if score == -np.inf:
+                break
+                
         if score > max_score:
             max_score = score 
-            # max_index = i       
+            max_index = i       
         
-    return max_score
+    return max_score, max_index
 
-def score_all_tfs(seq, tf_df):
+def score_single_tf(seqs, row_tf):
+    tf_name = row_tf['tf_name']
+    results = []
+    for seq in seqs:
+        score, _ = get_score(seq, row_tf)
+        results.append(score)
+    return tf_name, results
+
+def parallel_score_all_tfs(seqs, tf_df, max_workers=10):
     scores = {}
-    for _, row in tf_df.iterrows():
-        row = row
-        tf_name = row['tf_name']
-        score = get_score(seq, row)
-        scores[tf_name] = score
-    return pd.Series(scores)  
+    
+    with ProcessPoolExecutor(max_workers=max_workers) as executor:
+        future_to_tf = {
+            executor.submit(score_single_tf, seqs, row): row['tf_name'] for _, row in tf_df.iterrows()
+        }
+        for future in as_completed(future_to_tf):
+            tf_name, tf_scores = future.result()
+            scores[tf_name] = tf_scores
+    return pd.DataFrame(scores) 
 
 def main():
     tf_df = genome_data.tf_df
     id_seq_df = get_all_dna_seq(genomic_sites)
-    print(id_seq_df.head())
-    tf_scores = id_seq_df['seq'].apply(lambda seq: score_all_tfs(seq, tf_df))
-    combined_df = pd.concat([combined_df, tf_scores], axis=1)
+    
+    tf_small_df = tf_df.head(10)
+    id_small_seq = id_seq_df.head(10000)
+    print("Scoring all TFs across all sequences in parallel...")
+    tf_scores = parallel_score_all_tfs(id_seq_df['seq'].tolist(), tf_small_df, max_workers=5)
+    # tf_scores = id_small_seq['seq'].apply(lambda seq: score_all_tfs(seq, tf_small_df))
+    combined_df = pd.concat([id_seq_df, tf_scores], axis=1)
     combined_df.to_csv("tf_binding_scores.csv", index=False)
     
     

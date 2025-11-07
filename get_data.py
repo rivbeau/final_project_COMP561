@@ -83,21 +83,12 @@ def parallel_score_all_tfs(seqs, tf_df, max_workers=10):
 def main():
     tf_df = genome_data.tf_df
     id_seq_df = get_all_dna_seq(genomic_sites)
-    
-    tf_small_df = tf_df.head(10)
-    id_small_seq = id_seq_df.head(10000)
     print("Scoring all TFs across all sequences in parallel...")
-    tf_scores = parallel_score_all_tfs(id_seq_df['seq'].tolist(), tf_small_df, max_workers=5)
-    # tf_scores = id_small_seq['seq'].apply(lambda seq: score_all_tfs(seq, tf_small_df))
+    tf_scores = parallel_score_all_tfs(id_seq_df['seq'].tolist(), tf_df, max_workers=8)
     combined_df = pd.concat([id_seq_df, tf_scores], axis=1)
     combined_df.to_csv("tf_binding_scores.csv", index=False)
     
-    
 
-    # for _, site in pd.DataFrame(site_df).iterrows():
-    #     seq = get_dna_seq(site)
-    #     print(seq)
-    #     print(get_score(seq, tf_df.iloc[0]))
 if __name__ == "__main__":
     main()
     

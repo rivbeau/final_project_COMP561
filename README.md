@@ -1,0 +1,1 @@
+You will need to download the human genome by yourself because otherwise the file sizes were way too  big. Especially to push and pull. So far it would take a really really long time to get it becase fo the sheer size of the file, tbd

@@ -52,42 +52,6 @@ def pwm_to_gaussians(pwm, n_centers=5, sigma=None):
     return gauss
 
 
-def build_kmer_index(k=3):
-    kmers = [''.join(p) for p in product("ACGT", repeat=k)]
-    return {kmer: i for i, kmer in enumerate(kmers)}
-
-
-def seqs_to_kmer_matrix(seqs, k=3):
-    """
-    Simple bag-of-k-mers encoding.
-
-    seqs: list/array of strings (same length, e.g. 101bp)
-    returns: X of shape (N, 4^k) with normalized k-mer counts per sequence
-    """
-    kmer_index = build_kmer_index(k)
-    n_kmers = len(kmer_index)
-    N = len(seqs)
-    X = np.zeros((N, n_kmers), dtype=float)
-
-    for i, s in enumerate(seqs):
-        s = s.upper()
-        L = len(s)
-        if L < k:
-            continue
-
-        num_windows = 0
-        for j in range(L - k + 1):
-            kmer = s[j:j+k]
-            if kmer in kmer_index:  # skip windows containing 'N' or other chars
-                idx = kmer_index[kmer]
-                X[i, idx] += 1.0
-                num_windows += 1
-
-        if num_windows > 0:
-            X[i, :] /= num_windows  # frequencies
-
-    return X
-
 
 class TQDMKFold(StratifiedKFold):
     """
@@ -155,16 +119,13 @@ print("  Any remaining non-finite in shapes?",
       ~np.isfinite(np.concatenate([X_shape, pwm], axis=1)).all())
 
 # ============================================================
-# 3. Build extended features: PWM Gaussians + k-mers
+# 3. Build extended features: PWM Gaussians 
 # ============================================================
 
 print("\nBuilding Gaussian basis expansion for PWM...")
 pwm_gauss = pwm_to_gaussians(pwm, n_centers=5)
 print("  pwm_gauss:", pwm_gauss.shape)
 
-print("Building 3-mer sequence features...")
-X_3mer = seqs_to_kmer_matrix(seqs, k=3)
-print("  X_3mer   :", X_3mer.shape)
 
 # -------- Plot vanilla PWM distribution --------
 plt.figure(figsize=(7, 4))
@@ -194,17 +155,8 @@ feature_sets = {
     "PWM_only": pwm,                                        # (N, 1)
     "PWM_gauss": pwm_gauss,                                 # (N, 5)
     "Shape_only": X_shape,                                  # (N, 4 * L)
-    "Seq_3mer_only": X_3mer,                                # (N, 64)
     "Shape_plus_PWM": np.concatenate([X_shape, pwm], axis=1),
-    "Seq_3mer_plus_Shape": np.concatenate([X_3mer, X_shape], axis=1),
-    "Seq_3mer_plus_Shape_PWM": np.concatenate(
-        [X_3mer, X_shape, pwm],
-        axis=1
-    ),
-    "Seq_3mer_plus_Shape_PWMgauss": np.concatenate(
-        [X_3mer, X_shape, pwm_gauss],
-        axis=1
-    ),
+    "Shape_plus_PWMgauss": np.concatenate([X_shape, pwm_gauss], axis=1),
 }
 
 print("\nDefined feature sets:")

@@ -2,7 +2,6 @@ import numpy as np
 import pandas as pd
 import sys
 from pathlib import Path
-from itertools import product
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 from sklearn.preprocessing import StandardScaler
@@ -23,52 +22,15 @@ from data_extraction.shape_features import init_shape_tracks, add_shape_arrays, 
 
 
 # ============================================================
-# Helper functions for k-mers
-# ============================================================
-
-def build_kmer_index(k=3):
-    kmers = [''.join(p) for p in product("ACGT", repeat=k)]
-    return {kmer: i for i, kmer in enumerate(kmers)}
-
-
-def seqs_to_kmer_matrix(seqs, k=3):
-    """
-    Bag-of-k-mers encoding.
-    seqs: array-like of equal-length strings
-    returns X (N, 4^k) with normalized k-mer counts per sequence.
-    """
-    kmer_index = build_kmer_index(k)
-    n_kmers = len(kmer_index)
-    N = len(seqs)
-    X = np.zeros((N, n_kmers), dtype=float)
-
-    for i, s in enumerate(seqs):
-        s = s.upper()
-        L = len(s)
-        if L < k:
-            continue
-        num_windows = 0
-        for j in range(L - k + 1):
-            kmer = s[j:j+k]
-            if kmer in kmer_index:       # skip k-mers with N, etc.
-                idx = kmer_index[kmer]
-                X[i, idx] += 1.0
-                num_windows += 1
-        if num_windows > 0:
-            X[i, :] /= num_windows
-
-    return X
-
-
-# ============================================================
 # 1. Load labeled windows
 # ============================================================
 
-DATA_FILE = "tf_dataset_CTCF_100bp.csv"   # change name if needed
+DATA_FILE = "tf_dataset_CTCF_100_testbp.csv"   # change name if needed
 
 print(f"Loading dataset from {DATA_FILE}...")
 df = pd.read_csv(DATA_FILE)
 # expected columns: chrom, start, end, seq, label, pwm_score
+
 
 # ============================================================
 # 2. Add DNA shape features
@@ -105,7 +67,7 @@ print(f"Dropping {(~mask).sum()} rows with NaN/inf in shape or PWM")
 X_shape = X_shape[mask]
 pwm = pwm[mask]
 y = y[mask]
-seqs = df_shapes["seq"].values[mask]   # keep sequences aligned
+seqs = df_shapes["seq"].values[mask]   # keep sequences aligned (even if unused later)
 
 print("After dropping non-finite rows:")
 print("  X_shape:", X_shape.shape)
@@ -114,26 +76,21 @@ print("  y      :", y.shape)
 print("  Any remaining non-finite in shapes?",
       ~np.isfinite(np.concatenate([X_shape, pwm], axis=1)).all())
 
-# ============================================================
-# 3. Build k-mer features and define FEATURE SETS
-# ============================================================
 
-print("Building 3-mer sequence features...")
-X_3mer = seqs_to_kmer_matrix(seqs, k=3)
-print("  X_3mer:", X_3mer.shape)   # (N, 64)
+# ============================================================
+# 3. Define FEATURE SETS (no k-mers)
+# ============================================================
 
 feature_sets = {
     "PWM_only": pwm,                            # (N, 1)
     "Shape_only": X_shape,                      # (N, 4 * window_len)
     "Shape_plus_PWM": np.concatenate([X_shape, pwm], axis=1),
-    "Seq_3mer_only": X_3mer,                    # (N, 64)
-    "Seq_3mer_plus_Shape": np.concatenate([X_3mer, X_shape], axis=1),
-    "Seq_3mer_plus_Shape_PWM": np.concatenate([X_3mer, X_shape, pwm], axis=1),
 }
 
 print("\nDefined feature sets:")
 for name, X_fs in feature_sets.items():
     print(f"  {name:24s} -> X shape: {X_fs.shape}")
+
 
 # ============================================================
 # 4. Train/test split
@@ -153,6 +110,7 @@ print("  Test size     :", len(idx_test))
 y_trainval = y[idx_trainval]
 y_test = y[idx_test]
 
+
 # ============================================================
 # 5. SVM pipeline + hyperparameter grid
 # ============================================================
@@ -162,7 +120,7 @@ svm_pipeline = Pipeline([
     ("clf", LinearSVC(
         penalty="l2",
         loss="squared_hinge",   # smoother than hinge
-        dual=False,             # good when n_samples > n_features
+        dual=False,             # good when n_samples > n_features (adjust if needed)
         max_iter=20000,
         tol=1e-3,               # slightly looser tol -> fewer warnings
     )),
@@ -175,6 +133,7 @@ param_grid = {
 }
 
 cv = StratifiedKFold(n_splits=5, shuffle=True, random_state=42)
+
 
 # ============================================================
 # 6. GridSearchCV per feature set
@@ -206,6 +165,7 @@ for feat_name, X_fs in feature_sets.items():
 
     print(f"  Best ROC-AUC (CV mean): {grid.best_score_:.3f}")
     print("  Best params:", grid.best_params_)
+
 
 # ============================================================
 # 7. Test evaluation
@@ -249,6 +209,7 @@ for feat_name, X_fs in feature_sets.items():
         "cv_roc": cv_scores[feat_name],
     }
 
+
 # ============================================================
 # 8. Summary + best feature set (with tie-breaking)
 # ============================================================
@@ -272,3 +233,48 @@ print(f"  TEST Accuracy: {best_res['acc']:.3f}")
 print(f"  TEST ROC-AUC : {best_res['roc']:.3f}")
 print(f"  TEST PR-AUC  : {best_res['pr']:.3f}")
 print(f"  CV ROC-AUC   : {best_res['cv_roc']:.3f}")
+
+
+# ============================================================
+# 9. Save results to files (CSV + TXT)
+# ============================================================
+
+# Convert test_results dict to DataFrame
+rows = []
+for feat_name, res in test_results.items():
+    rows.append({
+        "feature_set": feat_name,
+        "model": res["model"],
+        "test_accuracy": res["acc"],
+        "test_roc_auc": res["roc"],
+        "test_pr_auc": res["pr"],
+        "cv_roc_auc": res["cv_roc"],
+    })
+
+results_df = pd.DataFrame(rows)
+
+# Create results directory
+results_dir = PROJECT_ROOT / "results"
+results_dir.mkdir(parents=True, exist_ok=True)
+
+# Generate name suffix based on dataset filename
+data_suffix = Path(DATA_FILE).stem.replace("tf_dataset_", "")
+
+# Output paths
+csv_path = results_dir / f"svm_results_{data_suffix}.csv"
+txt_path = results_dir / f"svm_best_feature_set_{data_suffix}.txt"
+
+# Save CSV
+results_df.to_csv(csv_path, index=False)
+
+# Save best result summary
+with open(txt_path, "w") as f:
+    f.write("BEST FEATURE SET (Linear SVM)\n")
+    f.write(f"Feature set: {best_name}\n")
+    f.write(f"TEST Accuracy: {best_res['acc']:.6f}\n")
+    f.write(f"TEST ROC-AUC : {best_res['roc']:.6f}\n")
+    f.write(f"TEST PR-AUC  : {best_res['pr']:.6f}\n")
+    f.write(f"CV ROC-AUC   : {best_res['cv_roc']:.6f}\n")
+
+print(f"\nSaved per-feature results to: {csv_path}")
+print(f"Saved best feature summary to: {txt_path}")

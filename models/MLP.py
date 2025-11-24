@@ -23,48 +23,10 @@ from data_extraction.shape_features import init_shape_tracks, add_shape_arrays, 
 
 
 # ============================================================
-# Helper functions for k-mers
-# ============================================================
-
-def build_kmer_index(k=3):
-    kmers = [''.join(p) for p in product("ACGT", repeat=k)]
-    return {kmer: i for i, kmer in enumerate(kmers)}
-
-
-def seqs_to_kmer_matrix(seqs, k=3):
-    """
-    Bag-of-k-mers encoding.
-    seqs: array-like of equal-length strings
-    returns X (N, 4^k) with normalized k-mer counts per sequence.
-    """
-    kmer_index = build_kmer_index(k)
-    n_kmers = len(kmer_index)
-    N = len(seqs)
-    X = np.zeros((N, n_kmers), dtype=float)
-
-    for i, s in enumerate(seqs):
-        s = s.upper()
-        L = len(s)
-        if L < k:
-            continue
-        num_windows = 0
-        for j in range(L - k + 1):
-            kmer = s[j:j + k]
-            if kmer in kmer_index:       # skip k-mers with N, etc.
-                idx = kmer_index[kmer]
-                X[i, idx] += 1.0
-                num_windows += 1
-        if num_windows > 0:
-            X[i, :] /= num_windows
-
-    return X
-
-
-# ============================================================
 # 1. Load labeled windows
 # ============================================================
 
-DATA_FILE = "tf_dataset_CTCF_100bp.csv"   # change name if needed
+DATA_FILE = "tf_dataset_CTCF_100_testbp.csv"   # change name if needed
 
 print(f"Loading dataset from {DATA_FILE}...")
 df = pd.read_csv(DATA_FILE)
@@ -121,16 +83,11 @@ print("  Any remaining non-finite in shapes?",
 # ============================================================
 
 print("Building 3-mer sequence features...")
-X_3mer = seqs_to_kmer_matrix(seqs, k=3)
-print("  X_3mer:", X_3mer.shape)   # (N, 64)
 
 feature_sets = {
     "PWM_only": pwm,                            # (N, 1)
     "Shape_only": X_shape,                      # (N, 4 * window_len)
     "Shape_plus_PWM": np.concatenate([X_shape, pwm], axis=1),
-    "Seq_3mer_only": X_3mer,                    # (N, 64)
-    "Seq_3mer_plus_Shape": np.concatenate([X_3mer, X_shape], axis=1),
-    "Seq_3mer_plus_Shape_PWM": np.concatenate([X_3mer, X_shape, pwm], axis=1),
 }
 
 print("\nDefined feature sets:")
@@ -287,3 +244,44 @@ print(f"  TEST Accuracy: {best_res['acc']:.3f}")
 print(f"  TEST ROC-AUC : {best_res['roc']:.3f}")
 print(f"  TEST PR-AUC  : {best_res['pr']:.3f}")
 print(f"  CV ROC-AUC   : {best_res['cv_roc']:.3f}")
+
+
+# ============================================================
+# 9. Save results to files
+# ============================================================
+# === NEW: save results to files ===
+
+# Build a DataFrame from test_results
+rows = []
+for feat_name, res in test_results.items():
+    rows.append({
+        "feature_set": feat_name,
+        "model": res["model"],
+        "test_accuracy": res["acc"],
+        "test_roc_auc": res["roc"],
+        "test_pr_auc": res["pr"],
+        "cv_roc_auc": res["cv_roc"],
+    })
+results_df = pd.DataFrame(rows)
+
+# Derive a suffix from DATA_FILE, e.g. "CTCF_100bp" from "tf_dataset_CTCF_100bp.csv"
+data_suffix = Path(DATA_FILE).stem.replace("tf_dataset_", "")
+
+results_dir = PROJECT_ROOT / "results"
+results_dir.mkdir(parents=True, exist_ok=True)
+
+csv_path = results_dir / f"mlp_results_{data_suffix}.csv"
+txt_path = results_dir / f"mlp_best_feature_set_{data_suffix}.txt"
+
+results_df.to_csv(csv_path, index=False)
+
+with open(txt_path, "w") as f:
+    f.write("BEST FEATURE SET (by TEST ROC-AUC, MLP + Adam)\n")
+    f.write(f"Feature set: {best_name}\n")
+    f.write(f"TEST Accuracy: {best_res['acc']:.6f}\n")
+    f.write(f"TEST ROC-AUC : {best_res['roc']:.6f}\n")
+    f.write(f"TEST PR-AUC  : {best_res['pr']:.6f}\n")
+    f.write(f"CV ROC-AUC   : {best_res['cv_roc']:.6f}\n")
+
+print(f"\nSaved per-feature results to: {csv_path}")
+print(f"Saved best feature summary to: {txt_path}")

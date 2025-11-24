@@ -1,17 +1,12 @@
 import numpy as np
 import pandas as pd
-from itertools import product
 
 import matplotlib.pyplot as plt
 import sys
 from pathlib import Path
-
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(PROJECT_ROOT))
+import json  # for saving hyperparameters
 
 from tqdm import tqdm
-
-from data_extraction.shape_features import init_shape_tracks, add_shape_arrays, shapes_to_matrix
 
 from sklearn.model_selection import train_test_split, StratifiedKFold, GridSearchCV
 from sklearn.preprocessing import StandardScaler
@@ -23,6 +18,15 @@ from sklearn.metrics import (
     average_precision_score,
     classification_report,
 )
+
+# ------------------------------------------------------------
+# Project imports
+# ------------------------------------------------------------
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.append(str(PROJECT_ROOT))
+
+from data_extraction.shape_features import init_shape_tracks, add_shape_arrays, shapes_to_matrix
+
 
 # ============================================================
 #  Helper functions
@@ -52,7 +56,6 @@ def pwm_to_gaussians(pwm, n_centers=5, sigma=None):
     return gauss
 
 
-
 class TQDMKFold(StratifiedKFold):
     """
     StratifiedKFold that wraps CV splits with a tqdm progress bar.
@@ -68,7 +71,7 @@ class TQDMKFold(StratifiedKFold):
 # 1. Load labeled windows
 # ============================================================
 
-DATA_FILE = "tf_dataset_CTCF_100bp.csv"   # change if you picked another TF/window
+DATA_FILE = "tf_dataset_CTCF_100_testbp.csv"   # change if you picked another TF/window
 
 print(f"Loading dataset from {DATA_FILE}...")
 df = pd.read_csv(DATA_FILE)
@@ -126,8 +129,7 @@ print("\nBuilding Gaussian basis expansion for PWM...")
 pwm_gauss = pwm_to_gaussians(pwm, n_centers=5)
 print("  pwm_gauss:", pwm_gauss.shape)
 
-
-# -------- Plot vanilla PWM distribution --------
+# -------- Plot vanilla PWM distribution (optional) --------
 plt.figure(figsize=(7, 4))
 plt.hist(pwm, bins=50)
 plt.title("Distribution of raw PWM scores")
@@ -136,7 +138,7 @@ plt.ylabel("Count")
 plt.tight_layout()
 plt.show()
 
-# -------- Plot Gaussian basis functions over PWM range --------
+# -------- Plot Gaussian basis functions over PWM range (optional) --------
 vals = np.linspace(pwm.min(), pwm.max(), 200)
 centers = np.linspace(pwm.min(), pwm.max(), 5)
 sigma = centers[1] - centers[0] if len(centers) > 1 else 1.0
@@ -175,11 +177,15 @@ idx_trainval, idx_test = train_test_split(
 )
 
 print("\nIndex-based split:")
+print("  Total samples:", n_samples)
 print("  Train+Val size:", len(idx_trainval))
 print("  Test size     :", len(idx_test))
 
 y_trainval = y[idx_trainval]
 y_test = y[idx_test]
+
+n_trainval = len(idx_trainval)
+n_test = len(idx_test)
 
 # ============================================================
 # 5. Define Logistic Regression pipeline + hyperparameter grid
@@ -197,7 +203,7 @@ logreg_pipeline = Pipeline([
 
 param_grid = {
     "clf__C": [0.01, 0.1, 1.0, 10.0],
-    # optionally you could add:
+    # you could also add:
     # "clf__class_weight": [None, "balanced"],
 }
 
@@ -207,8 +213,10 @@ cv = TQDMKFold(n_splits=5, shuffle=True, random_state=42)
 # 6. Run GridSearchCV for each FEATURE SET
 # ============================================================
 
-best_estimators = {}  # feat_name -> best_estimator
-cv_scores = {}        # feat_name -> best_cv_score (mean ROC-AUC)
+best_estimators = {}   # feat_name -> best_estimator
+cv_scores = {}         # feat_name -> best_cv_score (mean ROC-AUC)
+best_params_map = {}   # feat_name -> best hyperparameters
+cv_results_list = []   # list of DataFrames (one per feature set) for detailed CV results
 
 print("\n===== Hyperparameter search with 5-fold CV on train+val (Logistic Regression) =====")
 
@@ -225,15 +233,24 @@ for feat_name, X_fs in feature_sets.items():
         cv=cv,
         n_jobs=-1,
         verbose=0,
+        return_train_score=True,
     )
 
     grid.fit(X_trainval_fs, y_trainval)
 
     best_estimators[feat_name] = grid.best_estimator_
     cv_scores[feat_name] = grid.best_score_
+    best_params_map[feat_name] = grid.best_params_
 
     print(f"  Best ROC-AUC (CV mean): {grid.best_score_:.3f}")
     print("  Best params:", grid.best_params_)
+
+    # Save detailed CV results for this feature set
+    cv_res = pd.DataFrame(grid.cv_results_)
+    cv_res["feature_set"] = feat_name
+    cv_res["n_samples_trainval"] = X_trainval_fs.shape[0]
+    cv_res["n_features"] = X_trainval_fs.shape[1]
+    cv_results_list.append(cv_res)
 
 # ============================================================
 # 7. Evaluate best Logistic Regression model per FEATURE SET on TEST set
@@ -274,12 +291,21 @@ for feat_name, X_fs in feature_sets.items():
     print("  TEST Classification report:\n",
           classification_report(y_test, y_pred_test, digits=3))
 
+    # full model params (not just best C) if you ever want them
+    full_params = clf.get_params()
+
     test_results[feat_name] = {
         "model": "LogisticRegression",
         "acc": test_acc,
         "roc": test_roc,
         "pr": test_pr,
         "cv_roc": cv_scores[feat_name],
+        "best_params": best_params_map[feat_name],
+        "full_clf_params": full_params,
+        "n_samples": n_samples,
+        "n_trainval": n_trainval,
+        "n_test": n_test,
+        "n_features": X_fs.shape[1],
     }
 
 # ============================================================
@@ -290,7 +316,9 @@ print("\n===== Summary across feature sets (Logistic Regression) =====")
 for feat_name, res in test_results.items():
     print(f"{feat_name:28s}  "
           f"Acc={res['acc']:.3f}  ROC-AUC={res['roc']:.3f}  "
-          f"PR-AUC={res['pr']:.3f}  CV-ROC={res['cv_roc']:.3f}")
+          f"PR-AUC={res['pr']:.3f}  CV-ROC={res['cv_roc']:.3f}  "
+          f"Params={res['best_params']}  "
+          f"(n={res['n_samples']}, d={res['n_features']})")
 
 # Explicit comparison: vanilla PWM vs Gaussian PWM
 if "PWM_only" in test_results and "PWM_gauss" in test_results:
@@ -300,8 +328,11 @@ if "PWM_only" in test_results and "PWM_gauss" in test_results:
     print(f"PWM_gauss  : TEST ROC-AUC = {test_results['PWM_gauss']['roc']:.3f}, "
           f"CV ROC-AUC = {test_results['PWM_gauss']['cv_roc']:.3f}")
 
-# Choose best by TEST ROC-AUC
-best_feat = max(test_results.items(), key=lambda kv: kv[1]["roc"])
+# Choose best: prioritize TEST ROC, then CV ROC, then Accuracy
+best_feat = max(
+    test_results.items(),
+    key=lambda kv: (kv[1]["roc"], kv[1]["cv_roc"], kv[1]["acc"])
+)
 best_name, best_res = best_feat
 
 print("\n===== BEST FEATURE SET (by TEST ROC-AUC) =====")
@@ -310,3 +341,83 @@ print(f"  TEST Accuracy: {best_res['acc']:.3f}")
 print(f"  TEST ROC-AUC : {best_res['roc']:.3f}")
 print(f"  TEST PR-AUC  : {best_res['pr']:.3f}")
 print(f"  CV ROC-AUC   : {best_res['cv_roc']:.3f}")
+print(f"  Best hyperparameters: {best_res['best_params']}")
+print(f"  Dataset: n={best_res['n_samples']}, train+val={best_res['n_trainval']}, "
+      f"test={best_res['n_test']}, d={best_res['n_features']}")
+
+# ============================================================
+# 9. Save results to files (CSV + TXT)
+# ============================================================
+
+# Per-feature-set summary (one row per feature set)
+rows = []
+for feat_name, res in test_results.items():
+    rows.append({
+        "feature_set": feat_name,
+        "model": res["model"],
+        "test_accuracy": res["acc"],
+        "test_roc_auc": res["roc"],
+        "test_pr_auc": res["pr"],
+        "cv_roc_auc": res["cv_roc"],
+        "best_params": json.dumps(res["best_params"]),
+        "n_samples": res["n_samples"],
+        "n_trainval": res["n_trainval"],
+        "n_test": res["n_test"],
+        "n_features": res["n_features"],
+    })
+
+results_df = pd.DataFrame(rows)
+
+# Create results directory
+results_dir = PROJECT_ROOT / "results"
+results_dir.mkdir(parents=True, exist_ok=True)
+
+# Generate name suffix based on dataset filename
+data_suffix = Path(DATA_FILE).stem.replace("tf_dataset_", "")
+
+# Output paths
+csv_path = results_dir / f"logreg_results_{data_suffix}.csv"
+txt_path = results_dir / f"logreg_best_feature_set_{data_suffix}.txt"
+cv_csv_path = results_dir / f"logreg_cv_results_{data_suffix}.csv"
+
+# Save per-feature summary CSV
+results_df.to_csv(csv_path, index=False)
+
+# Save best result summary (including dataset sizes)
+# Save result summary (including dataset sizes) for EACH feature set
+with open(txt_path, "w") as f:
+    f.write("LOGISTIC REGRESSION SUMMARY PER FEATURE SET\n")
+    f.write(f"Dataset file: {DATA_FILE}\n")
+    f.write(f"Total samples used (after cleaning): {n_samples}\n")
+    f.write(f"Train+Val size: {n_trainval}\n")
+    f.write(f"Test size: {n_test}\n\n")
+
+    for feat_name, res in test_results.items():
+        f.write("========================================\n")
+        f.write(f"Feature set: {feat_name}\n")
+        f.write(f"TEST Accuracy: {res['acc']:.6f}\n")
+        f.write(f"TEST ROC-AUC : {res['roc']:.6f}\n")
+        f.write(f"TEST PR-AUC  : {res['pr']:.6f}\n")
+        f.write(f"CV ROC-AUC   : {res['cv_roc']:.6f}\n")
+        f.write(f"Best hyperparameters: {json.dumps(res['best_params'])}\n")
+        f.write(f"Number of features: {res['n_features']}\n\n")
+
+    # Highlight the best feature set at the end
+    f.write("===== BEST FEATURE SET (by TEST ROC-AUC) =====\n")
+    f.write(f"Feature set: {best_name}\n")
+    f.write(f"TEST Accuracy: {best_res['acc']:.6f}\n")
+    f.write(f"TEST ROC-AUC : {best_res['roc']:.6f}\n")
+    f.write(f"TEST PR-AUC  : {best_res['pr']:.6f}\n")
+    f.write(f"CV ROC-AUC   : {best_res['cv_roc']:.6f}\n")
+    f.write(f"Best hyperparameters: {json.dumps(best_res['best_params'])}\n")
+    f.write(f"Number of features: {best_res['n_features']}\n")
+
+
+# Save detailed CV results (one row per hyperparameter config per feature set)
+if cv_results_list:
+    all_cv_df = pd.concat(cv_results_list, ignore_index=True)
+    all_cv_df.to_csv(cv_csv_path, index=False)
+
+print(f"\nSaved per-feature results to: {csv_path}")
+print(f"Saved best feature summary to: {txt_path}")
+print(f"Saved detailed CV results to: {cv_csv_path}")

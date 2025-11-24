@@ -12,9 +12,10 @@ pos_tf_bind   = "./factorbookMotifPos.txt"
 
 TARGET_TF = "CTCF"   # <- choose your TF here
 WINDOW    = 100      # fixed window length (odd number is nice for centering)
+EXTRA = ""        #none or test for trying MLP/SVM models 
 
 # If you want to work on a subset while debugging, set this e.g. to 5000
-MAX_POSITIVE_SITES = None   # or an int like 5000
+MAX_POSITIVE_SITES = None   # None or an int like 5000
 # ----------------------------------------
 
 
@@ -225,7 +226,7 @@ def main():
     dataset["pwm_score"] = pwm_scores
 
     # 3) save dataset
-    out_name = f"tf_dataset_{TARGET_TF}_{WINDOW}bp.csv"
+    out_name = f"tf_dataset_{TARGET_TF}_{WINDOW}_{EXTRA}bp.csv"
     dataset.to_csv(out_name, index=False)
     print(f"Saved dataset to {out_name}")
     print(dataset.head())

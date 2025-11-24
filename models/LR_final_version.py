@@ -9,6 +9,7 @@ This script:
   - Builds the Shape_plus_PWMgauss feature matrix (405 features)
   - Performs a single 85/15 stratified train/test split
   - Trains LogisticRegression with C=0.1 and evaluates on the test set
+  - Generates diagnostic plots (ROC, PR, confusion matrix, score histograms, coefficients)
   - Retrains the same model on the full cleaned dataset
   - Saves a text summary with dataset sizes, hyperparameters, and performance
 """
@@ -19,6 +20,8 @@ import sys
 from pathlib import Path
 import json
 
+import matplotlib.pyplot as plt
+
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import StandardScaler
 from sklearn.pipeline import Pipeline
@@ -28,6 +31,9 @@ from sklearn.metrics import (
     roc_auc_score,
     average_precision_score,
     classification_report,
+    RocCurveDisplay,
+    PrecisionRecallDisplay,
+    ConfusionMatrixDisplay,
 )
 
 # ------------------------------------------------------------
@@ -218,7 +224,82 @@ print("\nClassification report:\n",
       classification_report(y_test, y_pred_test, digits=3))
 
 # ============================================================
-# 7. Retrain on full cleaned dataset
+# 7. Create results directory (for plots + summary)
+# ============================================================
+
+results_dir = PROJECT_ROOT / "results"
+results_dir.mkdir(parents=True, exist_ok=True)
+data_suffix = Path(DATA_FILE).stem.replace("tf_dataset_", "")
+
+# ============================================================
+# 8. Diagnostic plots on TEST set
+# ============================================================
+
+print("\nGenerating diagnostic plots...")
+
+# ---------- ROC curve ----------
+plt.figure()
+RocCurveDisplay.from_estimator(logreg_pipeline, X_test, y_test)
+plt.title("ROC curve – final LR (Shape_plus_PWMgauss)")
+plt.tight_layout()
+roc_path = results_dir / f"roc_curve_lr_shape_pwmgauss_{data_suffix}.png"
+plt.savefig(roc_path, dpi=300)
+plt.show()
+print(f"Saved ROC curve to: {roc_path}")
+
+# ---------- Precision–Recall curve ----------
+plt.figure()
+PrecisionRecallDisplay.from_estimator(logreg_pipeline, X_test, y_test)
+plt.title("Precision–Recall curve – final LR (Shape_plus_PWMgauss)")
+plt.tight_layout()
+pr_path = results_dir / f"pr_curve_lr_shape_pwmgauss_{data_suffix}.png"
+plt.savefig(pr_path, dpi=300)
+plt.show()
+print(f"Saved PR curve to: {pr_path}")
+
+# ---------- Confusion matrix ----------
+plt.figure()
+ConfusionMatrixDisplay.from_predictions(y_test, y_pred_test)
+plt.title("Confusion matrix – final LR (Shape_plus_PWMgauss)")
+plt.tight_layout()
+cm_path = results_dir / f"confusion_matrix_lr_shape_pwmgauss_{data_suffix}.png"
+plt.savefig(cm_path, dpi=300)
+plt.show()
+print(f"Saved confusion matrix to: {cm_path}")
+
+# ---------- Score histograms by class ----------
+plt.figure()
+plt.hist(test_scores[y_test == 1], bins=50, alpha=0.5, label="Positive (label=1)")
+plt.hist(test_scores[y_test == 0], bins=50, alpha=0.5, label="Negative (label=0)")
+plt.xlabel("Predicted score (probability of binding)")
+plt.ylabel("Count")
+plt.legend()
+plt.title("Score distributions by class – test set")
+plt.tight_layout()
+hist_path = results_dir / f"score_hist_lr_shape_pwmgauss_{data_suffix}.png"
+plt.savefig(hist_path, dpi=300)
+plt.show()
+print(f"Saved score histogram to: {hist_path}")
+
+# ---------- Top-20 coefficient magnitudes ----------
+coefs = clf.coef_.ravel()
+abs_coefs = np.abs(coefs)
+idx_sorted = np.argsort(-abs_coefs)[:20]
+
+plt.figure()
+plt.bar(range(len(idx_sorted)), abs_coefs[idx_sorted])
+plt.xticks(range(len(idx_sorted)), idx_sorted, rotation=90)
+plt.ylabel("|Coefficient|")
+plt.xlabel("Feature index")
+plt.title("Top 20 coefficient magnitudes – final LR model")
+plt.tight_layout()
+coef_path = results_dir / f"top20_coefs_lr_shape_pwmgauss_{data_suffix}.png"
+plt.savefig(coef_path, dpi=300)
+plt.show()
+print(f"Saved coefficient plot to: {coef_path}")
+
+# ============================================================
+# 9. Retrain on full cleaned dataset
 # ============================================================
 
 print("\nRetraining final model on the full cleaned dataset...")
@@ -228,13 +309,9 @@ print("Final model trained on full dataset.")
 full_clf_params = logreg_pipeline.named_steps["clf"].get_params()
 
 # ============================================================
-# 8. Save summary to file
+# 10. Save summary to file
 # ============================================================
 
-results_dir = PROJECT_ROOT / "results"
-results_dir.mkdir(parents=True, exist_ok=True)
-
-data_suffix = Path(DATA_FILE).stem.replace("tf_dataset_", "")
 summary_path = results_dir / f"logreg_final_shape_pwmgauss_{data_suffix}.txt"
 
 with open(summary_path, "w") as f:
@@ -257,3 +334,4 @@ with open(summary_path, "w") as f:
     f.write("\n")
 
 print(f"\nSaved final model summary to: {summary_path}")
+print("Done.")

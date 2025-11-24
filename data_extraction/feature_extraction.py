@@ -12,7 +12,7 @@ pos_tf_bind   = "./factorbookMotifPos.txt"
 
 TARGET_TF = "CTCF"   # <- choose your TF here
 WINDOW    = 100      # fixed window length (odd number is nice for centering)
-EXTRA = ""        #none or test for trying MLP/SVM models 
+EXTRA = ""        #none or test_ for trying MLP/SVM models 
 
 # If you want to work on a subset while debugging, set this e.g. to 5000
 MAX_POSITIVE_SITES = None   # None or an int like 5000

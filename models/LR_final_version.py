@@ -10,6 +10,7 @@ This script:
   - Performs a single 85/15 stratified train/test split
   - Trains LogisticRegression with C=0.1 and evaluates on the test set
   - Generates diagnostic plots (ROC, PR, confusion matrix, score histograms, coefficients)
+  - Computes and saves coefficient importances per feature and per shape family (MGW/ProT/Roll/HelT/PWM)
   - Retrains the same model on the full cleaned dataset
   - Saves a text summary with dataset sizes, hyperparameters, and performance
 """
@@ -281,11 +282,48 @@ plt.savefig(hist_path, dpi=300)
 plt.show()
 print(f"Saved score histogram to: {hist_path}")
 
-# ---------- Top-20 coefficient magnitudes ----------
+# ---------- Coefficients: per-feature + per-shape family ----------
 coefs = clf.coef_.ravel()
 abs_coefs = np.abs(coefs)
 idx_sorted = np.argsort(-abs_coefs)[:20]
 
+# Save all coefficients per feature index
+coef_df = pd.DataFrame({
+    "feature_index": np.arange(len(coefs)),
+    "coef": coefs,
+    "abs_coef": abs_coefs,
+})
+coef_csv_path = results_dir / f"coefficients_lr_shape_pwmgauss_{data_suffix}.csv"
+coef_df.to_csv(coef_csv_path, index=False)
+print(f"Saved full coefficient table to: {coef_csv_path}")
+
+# Aggregate coefficient importance per shape type
+window_len = X_shape.shape[1] // 4   # MGW, ProT, Roll, HelT each have window_len features
+
+idx_MGW  = np.arange(0 * window_len, 1 * window_len)
+idx_ProT = np.arange(1 * window_len, 2 * window_len)
+idx_Roll = np.arange(2 * window_len, 3 * window_len)
+idx_HelT = np.arange(3 * window_len, 4 * window_len)
+
+# PWM-Gaussians come after all 4*window_len shape features
+idx_PWM  = np.arange(4 * window_len, 4 * window_len + pwm_gauss.shape[1])
+
+shape_importance = {
+    "MGW_total" : float(np.abs(coefs[idx_MGW]).sum()),
+    "ProT_total": float(np.abs(coefs[idx_ProT]).sum()),
+    "Roll_total": float(np.abs(coefs[idx_Roll]).sum()),
+    "HelT_total": float(np.abs(coefs[idx_HelT]).sum()),
+    "PWM_total" : float(np.abs(coefs[idx_PWM]).sum()),
+}
+
+shape_json_path = results_dir / f"shape_group_importance_{data_suffix}.json"
+with open(shape_json_path, "w") as f:
+    json.dump(shape_importance, f, indent=2)
+
+print(f"Saved per-shape importance to: {shape_json_path}")
+print("Per-shape total importance:", shape_importance)
+
+# Plot top-20 coefficient magnitudes by feature index
 plt.figure()
 plt.bar(range(len(idx_sorted)), abs_coefs[idx_sorted])
 plt.xticks(range(len(idx_sorted)), idx_sorted, rotation=90)
@@ -328,6 +366,11 @@ with open(summary_path, "w") as f:
     f.write(f"  TEST Accuracy: {test_acc:.6f}\n")
     f.write(f"  TEST ROC-AUC : {test_roc:.6f}\n")
     f.write(f"  TEST PR-AUC  : {test_pr:.6f}\n\n")
+
+    f.write("Per-shape total |coef| importance:\n")
+    for k, v in shape_importance.items():
+        f.write(f"  {k}: {v:.6f}\n")
+    f.write("\n")
 
     f.write("Model hyperparameters (LogisticRegression):\n")
     f.write(json.dumps(full_clf_params, indent=2))

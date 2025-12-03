@@ -1,4 +1,4 @@
-To use you will need to download:
+To use you will need to download:\n
 -hg19 Chromosomes files given at [](http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/chromFa.tar.gz)
 -genomic sites of GM12878 cell at [](http://www.cs.mcgill.ca/~blanchem/561/wgEncodeRegTfbsClusteredV3.GM12878.merged.bed.gz)
 -experimental bound TF sites at [](http://www.cs.mcgill.ca/~blanchem/561/factorbookMotifPos.txt.gz)

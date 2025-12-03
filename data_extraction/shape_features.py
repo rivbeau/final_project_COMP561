@@ -17,6 +17,16 @@ BW_PATHS = {
     "ProT": "hg19.ProT.wig.bw",
     "Roll": "hg19.Roll.wig.bw",
     "HelT": "hg19.HelT.wig.bw",
+    # now the other 9 shape features if needed
+    # "Rise": "hg19.Rise.wig.bw",
+    # "Shift": "hg19.Shift.wig.bw",
+    # "Slide": "hg19.Slide.wig.bw",
+    # "Tilt": "hg19.Tilt.wig.bw",
+    # "Buckle": "hg19.Buckle.wig.bw",
+    # "Shear": "hg19.Shear.wig.bw",
+    # "Stretch": "hg19.Stretch.wig.bw",
+    # "Stagger": "hg19.Stagger.wig.bw",
+    # "Opening": "hg19.Opening.wig.bw",
 }
 
 

@@ -32,5 +32,5 @@ shape_importance = { #similar changes for this
     "ProT_total": float(np.abs(coefs[idx_ProT]).sum()),
     "Roll_total": float(np.abs(coefs[idx_Roll]).sum()),
     "HelT_total": float(np.abs(coefs[idx_HelT]).sum()),
-    "PWM_total" : float(np.abs(coefs[idx_PWM]).sum()),
+    "PWM_total" : float(np.abs(coefs[idx_PWM]).sum()), ...
 }`

@@ -27,8 +27,7 @@ LR_final_version.py : line 302 remove and include as you wish
 
 `window_len = X_shape.shape[1] // (N) # N = number of features used`
 
-`
-#for (i, i<N, i++) then idx_shape = np.arrange(i * window_len, i+1 * window_len) etc 
+`#for (i, i<N, i++) then idx_shape = np.arrange(i * window_len, i+1 * window_len) etc 
 idx_MGW  = np.arange(0 * window_len, 1 * window_len) 
 idx_ProT = np.arange(1 * window_len, 2 * window_len)
 idx_Roll = np.arange(2 * window_len, 3 * window_len)

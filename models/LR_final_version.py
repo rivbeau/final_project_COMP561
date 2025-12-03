@@ -37,6 +37,7 @@ from sklearn.metrics import (
     ConfusionMatrixDisplay,
 )
 
+
 # ------------------------------------------------------------
 # Project imports
 # ------------------------------------------------------------
@@ -104,7 +105,7 @@ print("Adding MGW / ProT / Roll / HelT arrays for each window...")
 df_shapes = add_shape_arrays(df, bw_tracks)
 
 print("Converting shape arrays to feature matrix...")
-X_shape = shapes_to_matrix(df_shapes)          # shape: (N_samples, 4 * window_len)
+X_shape = shapes_to_matrix(df_shapes, bw_tracks)          # shape: (N_samples, 4 * window_len)
 y = df_shapes["label"].values.astype(int)
 
 # PWM as 1D feature

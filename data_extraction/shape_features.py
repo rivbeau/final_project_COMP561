@@ -7,7 +7,7 @@
 
 import numpy as np
 import pandas as pd
-import pyBigWig
+import pyBigWig 
 from tqdm import tqdm
 
 
@@ -18,15 +18,15 @@ BW_PATHS = {
     "Roll": "hg19.Roll.wig.bw",
     "HelT": "hg19.HelT.wig.bw",
     # now the other 9 shape features if needed
-    # "Rise": "hg19.Rise.wig.bw",
-    # "Shift": "hg19.Shift.wig.bw",
-    # "Slide": "hg19.Slide.wig.bw",
-    # "Tilt": "hg19.Tilt.wig.bw",
-    # "Buckle": "hg19.Buckle.wig.bw",
-    # "Shear": "hg19.Shear.wig.bw",
-    # "Stretch": "hg19.Stretch.wig.bw",
-    # "Stagger": "hg19.Stagger.wig.bw",
-    # "Opening": "hg19.Opening.wig.bw",
+    "Rise": "hg19.Rise.wig.bw",
+    "Shift": "hg19.Shift.wig.bw",
+    "Slide": "hg19.Slide.wig.bw",
+    "Tilt": "hg19.Tilt.wig.bw",
+    "Buckle": "hg19.Buckle.wig.bw",
+    "Shear": "hg19.Shear.wig.bw",
+    "Stretch": "hg19.Stretch.wig.bw",
+    "Stagger": "hg19.Stagger.wig.bw",
+    "Opening": "hg19.Opening.wig.bw",
 }
 
 
@@ -89,8 +89,9 @@ def add_shape_arrays(df: pd.DataFrame, bw_tracks: dict) -> pd.DataFrame:
 
     Uses tqdm for progress visualization.
     """
-    mgw_list, prot_list, roll_list, helt_list = [], [], [], []
-
+    feature_names = list(bw_tracks.keys())
+    
+    feature_lists = {feat: [] for feat in feature_names}
     print(f"Extracting shape features for {len(df)} windows...")
 
     for _, row in tqdm(df.iterrows(), total=len(df), desc="Shape extraction"):
@@ -100,16 +101,12 @@ def add_shape_arrays(df: pd.DataFrame, bw_tracks: dict) -> pd.DataFrame:
 
         shapes = get_shape_for_window(chrom, start, end, bw_tracks)
 
-        mgw_list.append(shapes["MGW"])
-        prot_list.append(shapes["ProT"])
-        roll_list.append(shapes["Roll"])
-        helt_list.append(shapes["HelT"])
+        for feat in feature_names:
+            feature_lists[feat].append(shapes[feat])    
 
     df = df.copy()
-    df["MGW"]  = mgw_list
-    df["ProT"] = prot_list
-    df["Roll"] = roll_list
-    df["HelT"] = helt_list
+    for feat in feature_names:
+        df[feat] = feature_lists[feat]
 
     return df
 
@@ -118,13 +115,14 @@ def add_shape_arrays(df: pd.DataFrame, bw_tracks: dict) -> pd.DataFrame:
 # 4. Convert per-row arrays into a feature matrix
 # ------------------------------------------------------------
 def shapes_to_matrix(df: pd.DataFrame,
-                     feature_order=("MGW", "ProT", "Roll", "HelT")) -> np.ndarray:
+                     bw_tracks: dict) -> np.ndarray:
     """
     Convert shape arrays into 2D numpy matrix:
     [MGW_0..MGW_L-1, ProT_0.., Roll_0.., HelT_0...]
 
     Uses tqdm for progress bar.
     """
+    feature_order = list(bw_tracks.keys())
     rows = []
 
     print("Building 2D feature matrix from shape arrays...")

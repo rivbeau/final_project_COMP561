@@ -26,6 +26,7 @@ shape_features.py : line 15 remove and include as you wish
 LR_final_version.py : line 302 remove and include as you wish
 
 `window_len = X_shape.shape[1] // (N) # N = number of features used`
+
 `
 #for (i, i<N, i++) then idx_shape = np.arrange(i * window_len, i+1 * window_len) etc 
 idx_MGW  = np.arange(0 * window_len, 1 * window_len) 

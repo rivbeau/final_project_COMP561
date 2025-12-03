@@ -1,9 +1,15 @@
-To use you will need to download:\n
--hg19 Chromosomes files given at [](http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/chromFa.tar.gz)
--genomic sites of GM12878 cell at [](http://www.cs.mcgill.ca/~blanchem/561/wgEncodeRegTfbsClusteredV3.GM12878.merged.bed.gz)
--experimental bound TF sites at [](http://www.cs.mcgill.ca/~blanchem/561/factorbookMotifPos.txt.gz)
--position weight matrix of all TF mentioned in the previous file at [](http://www.cs.mcgill.ca/~blanchem/561/factorbookMotifPwm.txt.gz)
--DNA shape features files at [ http://rohsdb.cmb.usc.edu](https://rohslab.usc.edu/ftp/hg19/)
+To use you will need to download:
+
+-[phg19 Chromosomes files](http://hgdownload.soe.ucsc.edu/goldenPath/hg19/bigZips/chromFa.tar.gz)
+
+-[genomic sites of GM12878 cell](http://www.cs.mcgill.ca/~blanchem/561/wgEncodeRegTfbsClusteredV3.GM12878.merged.bed.gz)
+
+-[experimental bound TF sites](http://www.cs.mcgill.ca/~blanchem/561/factorbookMotifPos.txt.gz)
+
+-[position weight matrix of all TF mentioned in the previous file](http://www.cs.mcgill.ca/~blanchem/561/factorbookMotifPwm.txt.gz)
+
+-[DNA shape features files](https://rohslab.usc.edu/ftp/hg19/)
+
 
 Chromosome data should be in a subfolder named ChromFa.
 
